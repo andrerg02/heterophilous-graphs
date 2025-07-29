@@ -1,8 +1,9 @@
 import argparse
 from tqdm import tqdm
+import time
 
 import torch
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 
 from model import Model
 from datasets import Dataset
@@ -58,11 +59,13 @@ def get_args():
 
     return args
 
+CARALHO = 0
 
 def train_step(model, dataset, optimizer, scheduler, scaler, amp=False):
     model.train()
+    global CARALHO
 
-    with autocast(enabled=amp):
+    with autocast(str(dataset.node_features.device), enabled=amp):
         logits = model(graph=dataset.graph, x=dataset.node_features)
         loss = dataset.loss_fn(input=logits[dataset.train_idx], target=dataset.labels[dataset.train_idx])
 
@@ -72,12 +75,17 @@ def train_step(model, dataset, optimizer, scheduler, scaler, amp=False):
     optimizer.zero_grad()
     scheduler.step()
 
+    if CARALHO == 0:
+                peak_memory = torch.cuda.max_memory_allocated() / (1024 ** 2)
+                print(f"Peak memory: {peak_memory:.2f} MB")
+                CARALHO = 1
+
 
 @torch.no_grad()
 def evaluate(model, dataset, amp=False):
     model.eval()
 
-    with autocast(enabled=amp):
+    with autocast(str(dataset.node_features.device), enabled=amp):
         logits = model(graph=dataset.graph, x=dataset.node_features)
 
     metrics = dataset.compute_metrics(logits)
@@ -121,7 +129,9 @@ def main():
 
         logger.start_run(run=run, data_split=dataset.cur_data_split + 1)
         with tqdm(total=args.num_steps, desc=f'Run {run}', disable=args.verbose) as progress_bar:
+            times = []
             for step in range(1, args.num_steps + 1):
+                start = time.perf_counter()
                 train_step(model=model, dataset=dataset, optimizer=optimizer, scheduler=scheduler,
                            scaler=scaler, amp=args.amp)
                 metrics = evaluate(model=model, dataset=dataset, amp=args.amp)
@@ -129,6 +139,11 @@ def main():
 
                 progress_bar.update()
                 progress_bar.set_postfix({metric: f'{value:.2f}' for metric, value in metrics.items()})
+                end = time.perf_counter() - start
+                times.append(end)
+                if step % 20 == 0:
+                    print(f"Average time per step: {sum(times) / len(times):.4f} seconds")
+                    times = []
 
         logger.finish_run()
         model.cpu()

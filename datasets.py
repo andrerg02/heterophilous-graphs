@@ -86,13 +86,13 @@ class Dataset:
     def compute_metrics(self, logits):
         if self.num_targets == 1:
             train_metric = roc_auc_score(y_true=self.labels[self.train_idx].cpu().numpy(),
-                                         y_score=logits[self.train_idx].cpu().numpy()).item()
+                                         y_score=logits[self.train_idx].cpu().numpy())#.item()
 
             val_metric = roc_auc_score(y_true=self.labels[self.val_idx].cpu().numpy(),
-                                       y_score=logits[self.val_idx].cpu().numpy()).item()
+                                       y_score=logits[self.val_idx].cpu().numpy())#.item()
 
             test_metric = roc_auc_score(y_true=self.labels[self.test_idx].cpu().numpy(),
-                                        y_score=logits[self.test_idx].cpu().numpy()).item()
+                                        y_score=logits[self.test_idx].cpu().numpy())#.item()
 
         else:
             preds = logits.argmax(axis=1)
